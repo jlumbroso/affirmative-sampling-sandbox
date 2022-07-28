@@ -1,5 +1,6 @@
 
 import copy
+import math
 import typing
 
 # type: ignore
@@ -7,6 +8,7 @@ import randomhash
 
 DEFAULT_K = 100
 DEFAULT_W = 1000
+DEFAULT_M = 3
 DEFAULT_DEBUG = True
 
 class DebugStatistics:
@@ -422,4 +424,120 @@ class WindowedV2AffSample:
     @property
     def cardinality_estimate(self) -> int:
         return self._main_sample.cardinality_estimate
+
+
+class WindowedV3AffSample:
+
+    def __init__(
+        self,
+        k: int = DEFAULT_K,
+        w: int = DEFAULT_W,
+        m: int = DEFAULT_M,
+        debug: bool = None,
+    ):
+        self._k = k # size of the core
+        self._w = w # size of the window
+        self._m = m # number of subsamples
+
+        # DEBUG: statistic tracker
+        self._debug = debug if debug is not None else DEFAULT_DEBUG
+        self._stats = DebugStatistics()
+
+        self._samples = [
+            AffSample(k=self._sub_k, debug=self._debug)
+            for j in range(self._m)
+        ]
+        self._time = 0
+        self._latest_timestamp = dict()
+    
+    @property
+    def _sub_k(self):
+        # size of the core of the subsample
+        return math.floor(self._k/self._m)
+
+    @property
+    def _delta(self):
+        # time interval for a bucket
+        return math.floor(self._w/self._m)
+
+    def process(
+        self,
+        z: str,
+    ):  
+
+        # find interval based on time (i is the previous bucket)
+        i = math.floor((self._time-1)/self._delta) % self._m
+        j = math.floor(self._time/self._delta) % self._m
+
+        # flush if we are starting a new bucket (i != j)
+        if i != j:
+            self._samples[j].flush()
+            
+        # add element to subsample
+        is_added = self._samples[j].process(z=z)
+
+        # if element added, update timestamp
+        if is_added:
+            self._latest_timestamp[z] = self._time
+        
+        # increase time step
+        self._time += 1
+    
+    def _is_timestamp_in_window(self, ts: int) -> bool:
+        return ts >= self._time - self._w
+
+    @property
+    def sample(self):
+
+        # find the oldest bucket
+        j_start = (math.floor(self._time/self._delta) + 1) % self._m
+
+        merged_sample = dict()
+
+        # filter outdated elements in the oldest sample
+        for z, freq in self._samples[j_start]:
+            if self._is_timestamp_in_window(self._latest_timestamp[z]):
+                merged_sample[z] = freq
+        
+        # merge other samples
+        for i in range(1, self._m):
+
+            # select the right bucket
+            j = (j_start + i) % self._m
+
+            # merge with existing sample
+            for z, freq in self._samples[j]:
+                if z in merged_sample:
+                    merged_sample[z] += freq
+                else:
+                    merged_sample[z] = freq
+
+        return merged_sample
+    
+    @property
+    def statistics(self) -> typing.Dict[str, int]:
+        data = dict(self._stats.data)
+        for i in range(self._m):
+            data.update({
+                "{}.{}".format("s{}".format(i), key): value
+                for key, value in self._samples[i].statistics.items()
+            })
+        return data
+
+    @property
+    def w(self):
+        return self._w
+
+    @property
+    def size(self) -> int:
+        return len(self.sample)
+
+    def contains(self, z: str) -> bool:
+        return z in self.sample
+    
+    @property
+    def cardinality_estimate(self) -> int:
+        # KMV formula
+        all_min = min([ s._threshold_xtra_min for s in self._samples ])
+        return (len(self.sample)-1)/(1-randomhash.int_to_real(all_min))
     
