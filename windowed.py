@@ -585,7 +585,7 @@ class WindowedV3AffSample:
 # $r$-th largest value and correctly identify it as the $r$-record. This can then
 # be plugged into the KMV formula.
 
-class WindowedV4AAffSample:
+class WindowedV4AffSample:
 
     def __init__(
         self,
@@ -711,3 +711,143 @@ class WindowedV4AAffSample:
 
         # KMV formula
         return (r-1)/(1-randomhash.int_to_real(r_largest_hash))
+
+# WindowedV5: Another variant, like WindowedV4, to address the breakdown of
+# KMV in the WindowedV3 algorithm, due to the fact that we do not keep track
+# of the correct rank of the min of mins.
+#
+# In this V5, we take the max of the mins of the subsamples, and compute its
+# rank in the merged sample. We can do this, because the max of the min will
+# give the subsample that contains only elements larger than other unseen of
+# elements. The merged element contains, for sure, all the elements in the
+# window that have a hash value larger than this minimum, so we can compute
+# the rank exactly (this is the dual idea to the approach in V4).
+
+class WindowedV5AffSample:
+
+    def __init__(
+        self,
+        k: int = DEFAULT_K,
+        w: int = DEFAULT_W,
+        m: int = DEFAULT_M,
+        debug: bool = None,
+    ):
+        self._k = k # size of the core
+        self._w = w # size of the window
+        self._m = m # number of subsamples
+
+        # DEBUG: statistic tracker
+        self._debug = debug if debug is not None else DEFAULT_DEBUG
+        self._stats = DebugStatistics()
+
+        self._samples = [
+            AffSample(k=self._sub_k, debug=self._debug)
+            for j in range(self._m)
+        ]
+        self._time = 0
+        self._latest_timestamp = dict()
+    
+    @property
+    def _sub_k(self):
+        # size of the core of the subsample
+        return math.floor(self._k/self._m)
+
+    @property
+    def _delta(self):
+        # time interval for a bucket
+        return math.floor(self._w/self._m)
+
+    def process(
+        self,
+        z: str,
+    ):  
+
+        # find interval based on time (i is the previous bucket)
+        i = math.floor((self._time-1)/self._delta) % self._m
+        j = math.floor(self._time/self._delta) % self._m
+
+        # flush if we are starting a new bucket (i != j)
+        if i != j:
+            # "flush"
+            self._samples[j] = AffSample(k=self._sub_k, debug=self._debug)
+            
+        # add element to subsample
+        is_added = self._samples[j].process(z=z)
+
+        # if element added, update timestamp
+        if is_added:
+            self._latest_timestamp[z] = self._time
+        
+        # increase time step
+        self._time += 1
+    
+    def _is_timestamp_in_window(self, ts: int) -> bool:
+        return ts >= self._time - self._w
+
+    @property
+    def sample(self):
+
+        # find the oldest bucket
+        j_start = (math.floor(self._time/self._delta) + 1) % self._m
+
+        merged_sample = dict()
+
+        # filter outdated elements in the oldest sample
+        for z, freq in self._samples[j_start].sample.items():
+            if self._is_timestamp_in_window(self._latest_timestamp[z]):
+                merged_sample[z] = freq
+        
+        # merge other samples
+        for i in range(1, self._m):
+
+            # select the right bucket
+            j = (j_start + i) % self._m
+
+            # merge with existing sample
+            for z, freq in self._samples[j].sample.items():
+                if z in merged_sample:
+                    merged_sample[z] += freq
+                else:
+                    merged_sample[z] = freq
+
+        return merged_sample
+    
+    @property
+    def statistics(self) -> typing.Dict[str, int]:
+        data = dict(self._stats.data)
+        for i in range(self._m):
+            data.update({
+                "{}.{}".format("s{}".format(i), key): value
+                for key, value in self._samples[i].statistics.items()
+            })
+        return data
+
+    @property
+    def w(self):
+        return self._w
+
+    @property
+    def size(self) -> int:
+        return len(self.sample)
+
+    def contains(self, z: str) -> bool:
+        return z in self.sample
+    
+    @property
+    def cardinality_estimate(self) -> int:
+        
+        # THIS FUNCTION CONTAINS THE
+        # ONLY DIFFERENCE WITH RESPECT TO V3/V4
+        
+        # all the minima of the samples
+        all_mins = [ s._threshold_xtra_min for s in self._samples ]
+
+        # find the max of the mins
+        y_star = max(all_mins)
+
+        # c = count # of elements in S > y_star
+        hashf = self._samples[0]._hash # (assumes all samples have same hash) 
+        c = len(filter(lambda z: hashf(z) > y_star, self.sample))
+        
+        # KMV formula (c is the same as (c+1 - 1) when you count y_star itself)
+        return (c)/(1-randomhash.int_to_real(y_star))
