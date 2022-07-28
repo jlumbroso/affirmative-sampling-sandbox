@@ -840,14 +840,17 @@ class WindowedV5AffSample:
         # ONLY DIFFERENCE WITH RESPECT TO V3/V4
         
         # all the minima of the samples
-        all_mins = [ s._threshold_xtra_min for s in self._samples ]
+        all_mins = [
+            s._threshold_xtra_min for s in self._samples
+            if s._threshold_xtra_min is not None
+        ]
 
         # find the max of the mins
         y_star = max(all_mins)
 
         # c = count # of elements in S > y_star
         hashf = self._samples[0]._hash # (assumes all samples have same hash) 
-        c = len(filter(lambda z: hashf(z) > y_star, self.sample))
+        c = len(list(filter(lambda z: hashf(z) > y_star, self.sample)))
         
         # KMV formula (c is the same as (c+1 - 1) when you count y_star itself)
         return (c)/(1-randomhash.int_to_real(y_star))
