@@ -46,6 +46,8 @@ class DebugStatistics:
             return self._data[key]
 
 
+# Standard Affirmative Sampling implemented in class form.
+
 class AffSample:
 
     def __init__(
@@ -313,7 +315,11 @@ class AffSample:
         return (len(self._sample_freqs)-1)/(1-randomhash.int_to_real(self._threshold_xtra_min))
 
         
-
+# WindowedV1: same as AffSamp, but filtering outdated values at every step.
+#
+# => Problem is that the size of the sample gets stuck around ~k, because
+# the thresholds (that control the size) are too high and never lowered once
+# elements raise them.
 
 class WindowedV1AffSample(AffSample):
 
@@ -359,6 +365,17 @@ class WindowedV1AffSample(AffSample):
     def w(self):
         return self._w
 
+# WindowedV2: we have two overlapping subsamples MAIN and AUXI, and we
+# swap when we use each at every W step of time. The idea is that this
+# will ensure that the thresholds for CORE/XTRA are only calculated on
+# recent values.
+#
+# => Problem is that there are some *small* periodic fluctuations of
+# the size of the sample (in sawtooth) and *large* periodic fluctuations
+# of the cardinality estimate with KMV.
+#
+# The large discrepancy of the cardinality estimate comes from the fact
+# that we were capturing elements in subwindows of WindowedV2.
 
 class WindowedV2AffSample:
 
@@ -425,6 +442,18 @@ class WindowedV2AffSample:
     def cardinality_estimate(self) -> int:
         return self._main_sample.cardinality_estimate
 
+# WindowedV3: To address/smooth the periodic fluctuations of V2
+# that uses TWO samples, we extend the idea (and tweak it) so that
+# it can use $m$ samples with k'=k/m (with simpler scheduling),
+# which we constantly rotate in round robin, and which we merge to
+# provide a sample of the window.
+#
+# => While this satisfactorily smoothes the size of the overall
+# sample, it considerably degrades the cardinality estimation,
+# because KMV requires us to know the exact rank of the hash
+# value used to compute the estimate — and when we merge the
+# local minima of each subsample, we lose the information of
+# what rank that element is at.
 
 class WindowedV3AffSample:
 
