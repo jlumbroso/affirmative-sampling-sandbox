@@ -883,3 +883,20 @@ class WindowedV5AffSample:
         
         # KMV formula (c is the same as (c+1 - 1) when you count y_star itself)
         return (c)/(1-randomhash.int_to_real(y_star))
+
+
+class WindowedV4BAffSample(WindowedV4AffSample):
+
+    @property
+    def _delta(self):
+        # time interval for a bucket
+        return math.floor(self._w/(self._m - 1))
+
+# next idea: try V4C to take non-empty size
+
+class WindowedV5BAffSample(WindowedV5AffSample):
+
+    @property
+    def _delta(self):
+        # time interval for a bucket
+        return math.floor(self._w/(self._m - 1))
