@@ -695,6 +695,20 @@ class WindowedV4AffSample:
     def contains(self, z: str) -> bool:
         return z in self.sample
     
+    def _purge_outdated(self, sample, with_frequencies=False):
+        if with_frequencies:
+            return {
+                z: freq
+                for z, freq in sample.items()
+                if z in self._latest_timestamp and self._is_timestamp_in_window(self._latest_timestamp[z])
+            }
+        else:
+            return [
+                z
+                for z in sample.keys()
+                if z in self._latest_timestamp and self._is_timestamp_in_window(self._latest_timestamp[z])
+            ]
+
     @property
     def cardinality_estimate(self) -> int:
         
@@ -702,7 +716,7 @@ class WindowedV4AffSample:
         # ONLY DIFFERENCE WITH RESPECT TO V3
 
         # find $r$, the size of the smallest sample
-        r = min(map(lambda s: len(s.sample), self._samples))
+        r = min(map(lambda s: len(self._purge_outdated(s.sample)), self._samples))
 
         # find the $r$-th largest element in the merged sample S
         hashf = self._samples[0]._hash_preimage_pair # (assumes all samples have same hash)
@@ -833,6 +847,20 @@ class WindowedV5AffSample:
     def contains(self, z: str) -> bool:
         return z in self.sample
     
+    def _purge_outdated(self, sample, with_frequencies=False):
+        if with_frequencies:
+            return {
+                z: freq
+                for z, freq in sample.items()
+                if z in self._latest_timestamp and self._is_timestamp_in_window(self._latest_timestamp[z])
+            }
+        else:
+            return [
+                z
+                for z in sample.keys()
+                if z in self._latest_timestamp and self._is_timestamp_in_window(self._latest_timestamp[z])
+            ]
+
     @property
     def cardinality_estimate(self) -> int:
         
@@ -842,7 +870,8 @@ class WindowedV5AffSample:
         # all the minima of the samples
         all_mins = [
             s._threshold_xtra_min for s in self._samples
-            if s._threshold_xtra_min is not None
+            if s._threshold_xtra_min is not None and
+            self._is_timestamp_in_window(self._latest_timestamp[s._threshold_xtra_min_z])
         ]
 
         # find the max of the mins
