@@ -578,3 +578,136 @@ class WindowedV3AffSample:
         # KMV formula
         return (len(self.sample)-1)/(1-randomhash.int_to_real(all_min))
     
+# WindowedV4: To address the problem of V3 with cardinality estimation, we try to
+# compute different merged statistics. In V4, we look for the size of the smallest
+# subsample, call this $r$. We know that in every subsample we have the $r$ largest
+# elements to have ever appeared in that substream. Therefore we can find the
+# $r$-th largest value and correctly identify it as the $r$-record. This can then
+# be plugged into the KMV formula.
+
+class WindowedV4AAffSample:
+
+    def __init__(
+        self,
+        k: int = DEFAULT_K,
+        w: int = DEFAULT_W,
+        m: int = DEFAULT_M,
+        debug: bool = None,
+    ):
+        self._k = k # size of the core
+        self._w = w # size of the window
+        self._m = m # number of subsamples
+
+        # DEBUG: statistic tracker
+        self._debug = debug if debug is not None else DEFAULT_DEBUG
+        self._stats = DebugStatistics()
+
+        self._samples = [
+            AffSample(k=self._sub_k, debug=self._debug)
+            for j in range(self._m)
+        ]
+        self._time = 0
+        self._latest_timestamp = dict()
+    
+    @property
+    def _sub_k(self):
+        # size of the core of the subsample
+        return math.floor(self._k/self._m)
+
+    @property
+    def _delta(self):
+        # time interval for a bucket
+        return math.floor(self._w/self._m)
+
+    def process(
+        self,
+        z: str,
+    ):  
+
+        # find interval based on time (i is the previous bucket)
+        i = math.floor((self._time-1)/self._delta) % self._m
+        j = math.floor(self._time/self._delta) % self._m
+
+        # flush if we are starting a new bucket (i != j)
+        if i != j:
+            # "flush"
+            self._samples[j] = AffSample(k=self._sub_k, debug=self._debug)
+            
+        # add element to subsample
+        is_added = self._samples[j].process(z=z)
+
+        # if element added, update timestamp
+        if is_added:
+            self._latest_timestamp[z] = self._time
+        
+        # increase time step
+        self._time += 1
+    
+    def _is_timestamp_in_window(self, ts: int) -> bool:
+        return ts >= self._time - self._w
+
+    @property
+    def sample(self):
+
+        # find the oldest bucket
+        j_start = (math.floor(self._time/self._delta) + 1) % self._m
+
+        merged_sample = dict()
+
+        # filter outdated elements in the oldest sample
+        for z, freq in self._samples[j_start].sample.items():
+            if self._is_timestamp_in_window(self._latest_timestamp[z]):
+                merged_sample[z] = freq
+        
+        # merge other samples
+        for i in range(1, self._m):
+
+            # select the right bucket
+            j = (j_start + i) % self._m
+
+            # merge with existing sample
+            for z, freq in self._samples[j].sample.items():
+                if z in merged_sample:
+                    merged_sample[z] += freq
+                else:
+                    merged_sample[z] = freq
+
+        return merged_sample
+    
+    @property
+    def statistics(self) -> typing.Dict[str, int]:
+        data = dict(self._stats.data)
+        for i in range(self._m):
+            data.update({
+                "{}.{}".format("s{}".format(i), key): value
+                for key, value in self._samples[i].statistics.items()
+            })
+        return data
+
+    @property
+    def w(self):
+        return self._w
+
+    @property
+    def size(self) -> int:
+        return len(self.sample)
+
+    def contains(self, z: str) -> bool:
+        return z in self.sample
+    
+    @property
+    def cardinality_estimate(self) -> int:
+        
+        # THIS FUNCTION CONTAINS THE
+        # ONLY DIFFERENCE WITH RESPECT TO V3
+
+        # find $r$, the size of the smallest sample
+        r = min(map(lambda s: len(s.sample), self._samples))
+
+        # find the $r$-th largest element in the merged sample S
+        hashf = self._samples[0]._hash_preimage_pair # (assumes all samples have same hash)
+        sorted_hashed_sample = sorted(map(hashf, self.sample), reverse=True)
+        r_largest_hash, r_largest = sorted_hashed_sample[r-1]
+
+        # KMV formula
+        return (r-1)/(1-randomhash.int_to_real(r_largest_hash))
