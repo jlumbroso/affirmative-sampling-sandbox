@@ -471,7 +471,8 @@ class WindowedV3AffSample:
 
         # flush if we are starting a new bucket (i != j)
         if i != j:
-            self._samples[j].flush()
+            # "flush"
+            self._samples[j] = AffSample(k=self._sub_k, debug=self._debug)
             
         # add element to subsample
         is_added = self._samples[j].process(z=z)
@@ -495,7 +496,7 @@ class WindowedV3AffSample:
         merged_sample = dict()
 
         # filter outdated elements in the oldest sample
-        for z, freq in self._samples[j_start]:
+        for z, freq in self._samples[j_start].sample.items():
             if self._is_timestamp_in_window(self._latest_timestamp[z]):
                 merged_sample[z] = freq
         
@@ -506,7 +507,7 @@ class WindowedV3AffSample:
             j = (j_start + i) % self._m
 
             # merge with existing sample
-            for z, freq in self._samples[j]:
+            for z, freq in self._samples[j].sample.items():
                 if z in merged_sample:
                     merged_sample[z] += freq
                 else:
@@ -537,7 +538,14 @@ class WindowedV3AffSample:
     
     @property
     def cardinality_estimate(self) -> int:
+        
+        # merge minima
+        mins = list(filter(lambda x: x is not None, [ s._threshold_xtra_min for s in self._samples ]))
+        if len(mins) == 0:
+            return 0
+
+        all_min = min(mins)
+
         # KMV formula
-        all_min = min([ s._threshold_xtra_min for s in self._samples ])
         return (len(self.sample)-1)/(1-randomhash.int_to_real(all_min))
     
