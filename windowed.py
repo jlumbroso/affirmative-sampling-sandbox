@@ -311,6 +311,10 @@ class AffSample:
         return z in self._sample_freqs
     
     @property
+    def ready(self) -> bool:
+        return self.size >= self._k
+    
+    @property
     def cardinality_estimate(self) -> int:
         # KMV formula
         return (len(self._sample_freqs)-1)/(1-randomhash.int_to_real(self._threshold_xtra_min))
@@ -742,8 +746,13 @@ class WindowedV4AffSample:
         # THIS FUNCTION CONTAINS THE
         # ONLY DIFFERENCE WITH RESPECT TO V3
 
-        # find $r$, the size of the smallest sample
-        r = min(map(lambda s: len(self._purge_outdated(s.sample)), self._samples))
+        # find $r$, the size of the smallest sample (only look at "ready" samples)
+        r = min(map(lambda s: len(self._purge_outdated(s.sample)), 
+            filter(lambda s: s.ready, self._samples)))
+
+        # avoid empty stuff
+        if r == 0:
+            return 0
 
         # find the $r$-th largest element in the merged sample S
         hashf = self._samples[0]._hash_preimage_pair # (assumes all samples have same hash)
