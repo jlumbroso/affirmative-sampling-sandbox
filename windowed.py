@@ -1,6 +1,7 @@
 
 import copy
 import math
+import random
 import typing
 
 # type: ignore
@@ -383,17 +384,23 @@ class WindowedV2AffSample:
         self,
         k: int = DEFAULT_K,
         w: int = DEFAULT_W,
+        seed: typing.Optional[int] = None,
         debug: bool = None,
     ):
         self._k = k
         self._w = w
 
+        # since we have multiple samples, they need to all use the
+        # same random number generator and hash function --- we use
+        # the user-provided seed (that can be None) as a source
+        self._master_seed = random.Random(x=seed).randint(0, 2**32-1)
+
         # DEBUG: statistic tracker
         self._debug = debug if debug is not None else DEFAULT_DEBUG
         self._stats = DebugStatistics()
 
-        self._main_sample = AffSample(k=self._k, debug=self._debug)
-        self._auxi_sample = AffSample(k=self._k, debug=self._debug)
+        self._main_sample = AffSample(k=self._k, seed=self._master_seed, debug=self._debug)
+        self._auxi_sample = AffSample(k=self._k, seed=self._master_seed, debug=self._debug)
         self._time = 0
     
     def process(
@@ -462,18 +469,28 @@ class WindowedV3AffSample:
         k: int = DEFAULT_K,
         w: int = DEFAULT_W,
         m: int = DEFAULT_M,
+        seed: typing.Optional[int] = None,
         debug: bool = None,
     ):
         self._k = k # size of the core
         self._w = w # size of the window
         self._m = m # number of subsamples
 
+        # since we have multiple samples, they need to all use the
+        # same random number generator and hash function --- we use
+        # the user-provided seed (that can be None) as a source
+        self._master_seed = random.Random(x=seed).randint(0, 2**32-1)
+
         # DEBUG: statistic tracker
         self._debug = debug if debug is not None else DEFAULT_DEBUG
         self._stats = DebugStatistics()
 
         self._samples = [
-            AffSample(k=self._sub_k, debug=self._debug)
+            AffSample(
+                k=self._sub_k,
+                seed=self._master_seed, # each sample uses the same seed
+                debug=self._debug
+            )
             for j in range(self._m)
         ]
         self._time = 0
@@ -592,18 +609,28 @@ class WindowedV4AffSample:
         k: int = DEFAULT_K,
         w: int = DEFAULT_W,
         m: int = DEFAULT_M,
+        seed: typing.Optional[int] = None,
         debug: bool = None,
     ):
         self._k = k # size of the core
         self._w = w # size of the window
         self._m = m # number of subsamples
 
+        # since we have multiple samples, they need to all use the
+        # same random number generator and hash function --- we use
+        # the user-provided seed (that can be None) as a source
+        self._master_seed = random.Random(x=seed).randint(0, 2**32-1)
+
         # DEBUG: statistic tracker
         self._debug = debug if debug is not None else DEFAULT_DEBUG
         self._stats = DebugStatistics()
 
         self._samples = [
-            AffSample(k=self._sub_k, debug=self._debug)
+            AffSample(
+                k=self._sub_k,
+                seed=self._master_seed, # each sample uses the same seed
+                debug=self._debug
+            )
             for j in range(self._m)
         ]
         self._time = 0
@@ -744,18 +771,28 @@ class WindowedV5AffSample:
         k: int = DEFAULT_K,
         w: int = DEFAULT_W,
         m: int = DEFAULT_M,
+        seed: typing.Optional[int] = None,
         debug: bool = None,
     ):
         self._k = k # size of the core
         self._w = w # size of the window
         self._m = m # number of subsamples
 
+        # since we have multiple samples, they need to all use the
+        # same random number generator and hash function --- we use
+        # the user-provided seed (that can be None) as a source
+        self._master_seed = random.Random(x=seed).randint(0, 2**32-1)
+
         # DEBUG: statistic tracker
         self._debug = debug if debug is not None else DEFAULT_DEBUG
         self._stats = DebugStatistics()
 
         self._samples = [
-            AffSample(k=self._sub_k, debug=self._debug)
+            AffSample(
+                k=self._sub_k,
+                seed=self._master_seed, # each sample uses the same seed
+                debug=self._debug
+            )
             for j in range(self._m)
         ]
         self._time = 0
