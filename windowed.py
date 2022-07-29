@@ -747,8 +747,13 @@ class WindowedV4AffSample:
         # ONLY DIFFERENCE WITH RESPECT TO V3
 
         # find $r$, the size of the smallest sample (only look at "ready" samples)
-        r = min(map(lambda s: len(self._purge_outdated(s.sample)), 
+        candidates = list(map(lambda s: len(self._purge_outdated(s.sample)), 
             filter(lambda s: s.ready, self._samples)))
+
+        if len(candidates) == 0:
+            return 0
+        
+        r = min(candidates)
 
         # avoid empty stuff
         if r == 0:
