@@ -937,3 +937,35 @@ class WindowedV5BAffSample(WindowedV5AffSample):
     def _delta(self):
         # time interval for a bucket
         return math.floor(self._w/(self._m - 1))
+
+class WindowedSimulator:
+
+    def __init__(self, waf, tokens):
+        self._waf = waf
+        self._tokens = tokens
+
+        self._sample_size = []
+        self._wcard = []
+        self._wcard_est = []
+
+    def run(self):
+        for timestamp, token in enumerate(self._tokens):
+            self._waf.process(token)
+
+            # record stats
+            self._sample_size.append(self._waf.size)
+            self._wcard.append(len(set(self._tokens[max(0, timestamp - self._waf.w):timestamp])))
+            self._wcard_est.append(self._waf.cardinality_estimate)
+        
+        return self
+    
+    def plot_size(self):
+        import matplotlib.pyplot as plt
+        plt.plot(self._sample_size)
+        plt.show()
+
+    def plot_card(self):
+        import matplotlib.pyplot as plt
+        plt.plot(self._wcard_est)
+        plt.plot(self._wcard)
+        plt.show()
